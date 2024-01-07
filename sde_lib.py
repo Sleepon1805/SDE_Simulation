@@ -153,7 +153,7 @@ class OrnsteinUhlenbeck(SDE):
         return X
 
     def __repr__(self):
-        return (f"Ornstein-Uhlenbeck Process with "
+        return (f"Ornstein-Uhlenbeck with "
                 f"T={self.T}, N={self.N}, x0={self.x0}, mu={self.mu}, theta={self.theta}, sigma={self.sigma}")
 
 
@@ -197,7 +197,7 @@ class CoxIngersollRoss(SDE):
         return X
 
     def __repr__(self):
-        return (f"Cox-Ingersoll-Ross Process with "
+        return (f"Cox-Ingersoll-Ross with "
                 f"T={self.T}, N={self.N}, x0={self.x0}, a={self.a}, b={self.b}, sigma={self.sigma}")
 
 
