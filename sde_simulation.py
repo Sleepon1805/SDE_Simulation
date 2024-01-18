@@ -6,9 +6,9 @@ from typing import List, Dict, Tuple
 from sklearn.linear_model import LinearRegression
 
 from sde_lib import SDE, GeometricBrownianMotion, OrnsteinUhlenbeck, CoxIngersollRoss
-from approximation_methods import get_approximation_method, APPROXIMATION_METHODS
+from approximation_methods import get_approximation_method
 
-DEFAULT_BATCH_SIZE = 10000  # 20000 (num_simulations) x 32768 (timesteps) still pass on my Radeon RX 6700 XT
+DEFAULT_BATCH_SIZE = 5000  # 20000 (num_simulations) x 32768 (timesteps) still pass on my Radeon RX 6700 XT
 
 
 class ConvergenceRateCalculator:
@@ -26,7 +26,7 @@ class ConvergenceRateCalculator:
         self.batch_size = min(DEFAULT_BATCH_SIZE, num_simulations)
 
         # for plotting
-        self.colors = ['blue', 'orange', 'green']
+        self.colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
         self.linestyles = ['-', '--', ':']
 
     def test_different_sde_params(self, param_name: str, param_values: List[float], use_exact_solution: True, visualize=True):
@@ -54,11 +54,12 @@ class ConvergenceRateCalculator:
     def calculate_convergence_rates(self, use_exact_solution: True, visualize=True):
         adapted_sde_name = str(self.sde).replace(
             f"N={self.sde.N}",
-            f"N=[{max(self.num_steps_grid)} ... {max(self.num_steps_grid)}]"
+            f"N=[{max(self.num_steps_grid)} ... {min(self.num_steps_grid)}]"
         )
         print(f'SDE: {adapted_sde_name}')
 
         errors = []
+        assert self.num_simulations % self.batch_size == 0, "float number of batches not implemented yet"
         num_batches = self.num_simulations // self.batch_size
         ttime = time()
         for batch_num in range(num_batches):
@@ -125,6 +126,7 @@ class ConvergenceRateCalculator:
                     errors[(method_name, p, N)] += self._calculate_lp_error(
                         exact_solutions, approximations, p=p)
             print(f"{time() - ttime:.2f}s + ", end="")
+        print("")
         return errors
 
     @staticmethod
@@ -158,17 +160,28 @@ class ConvergenceRateCalculator:
 
 
 if __name__ == '__main__':
+    APPROXIMATION_METHODS = [
+        # 'Euler-Maruyama',
+        # 'Milstein',
+        # 'Truncated Milstein',
+        'Alfonsi Implicit (3)',
+        'Alfonsi Implicit (4)',
+        'Alfonsi Explicit 0',  # lambda=0 correspond to (4)
+        'Alfonsi Explicit sigma^2/4',  # lambda = sigma ^ 2 / 4 correspond to (3)
+        # 'Runge-Kutta',
+        # 'Time Adaptive 0',
+    ]
 
     # SDE = GeometricBrownianMotion(time_horizon=1, num_steps=1, x0=1, mu=2, sigma=1)
-    SDE = CoxIngersollRoss(time_horizon=1, num_steps=1, x0=1, a=1, b=0, sigma=2)
+    SDE = CoxIngersollRoss(time_horizon=1, num_steps=1, x0=1, a=1, b=1, sigma=2)
     # SDE = OrnsteinUhlenbeck(time_horizon=1, num_steps=1, x0=1, mu=0, theta=1, sigma=1
 
     calc = ConvergenceRateCalculator(
         sde=SDE,
         approximation_methods=APPROXIMATION_METHODS,
-        dt_grid=[2 ** i for i in range(-13, -4)],
-        p_values=[1, 2],
-        num_simulations=100000,
+        dt_grid=[2 ** i for i in range(-14, -4)],
+        p_values=[1],
+        num_simulations=20000,
     )
     # calc.calculate_convergence_rates(use_exact_solution=False, visualize=True)
-    calc.test_different_sde_params('a', [0.1, 0.25, 0.5, 1, 2, 4], use_exact_solution=False, visualize=True)
+    calc.test_different_sde_params('sigma', [0.5, 1, 1.5, 2, 2.5, 3], use_exact_solution=False, visualize=True)
