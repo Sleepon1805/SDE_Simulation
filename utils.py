@@ -32,3 +32,7 @@ def run_batched(func, arg_name, batch_size, batch_dim, *args, **kwargs):
         results.append(func(*args, **kwargs))
     results = torch.cat(results, dim=batch_dim)
     return results
+
+
+def pos_part(x: torch.Tensor):
+    return torch.maximum(x, torch.tensor(0, device=x.device))

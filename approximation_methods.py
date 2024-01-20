@@ -6,7 +6,7 @@ from tqdm import tqdm
 import re
 
 from sde_lib import SDE, GeometricBrownianMotion, OrnsteinUhlenbeck, CoxIngersollRoss
-from utils import on_device, SEED
+from utils import on_device, SEED, pos_part
 
 APPROXIMATION_METHODS = [
     'Euler-Maruyama',
@@ -96,7 +96,7 @@ def truncated_milstein(sde: SDE, W: torch.Tensor):
         dt = torch.tensor(sde.dt, device=W.device)
         for i in range(sde.N - 1):
             nonlinear_part = torch.maximum(dt ** 0.5, torch.maximum(dt, X[i]) ** 0.5 + dW[i]) ** 2
-            X[i + 1] = torch.maximum(nonlinear_part + (sde.delta - 1 - sde.b * X[i]) * dt, torch.tensor(0, device=W.device))
+            X[i + 1] = pos_part(nonlinear_part + (sde.delta - 1 - sde.b * X[i]) * dt)
     else:
         raise NotImplementedError(f'Truncated Milstein method not implemented for {sde}')
     return X
