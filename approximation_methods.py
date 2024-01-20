@@ -12,12 +12,12 @@ APPROXIMATION_METHODS = [
     'Euler-Maruyama',
     'Milstein',
     'Truncated Milstein',
-    'Alfonsi Implicit (3)',
-    'Alfonsi Implicit (4)',
-    'Alfonsi Explicit 0',  # lambda=0 correspond to (4)
-    'Alfonsi Explicit sigma^2/4',  # lambda = sigma ^ 2 / 4 correspond to (3)
+    'Alfonsi (3)',
+    'Alfonsi (4)',
+    'Alfonsi E(0)',  # lambda=0 correspond to (4)
+    'Alfonsi E(sigma^2/4)',  # lambda = sigma ^ 2 / 4 correspond to (3)
     'Runge-Kutta',
-    'Time Adaptive 0',
+    # 'Time Adaptive 0',
 ]
 
 
@@ -33,12 +33,13 @@ def get_approximation_method(name: str):
         return milstein
     elif name == 'Truncated Milstein':
         return truncated_milstein
-    elif name == 'Alfonsi Implicit (3)':
+    elif name == 'Alfonsi (3)':
         return alfonsi_implicit_euler_3
-    elif name == 'Alfonsi Implicit (4)':
+    elif name == 'Alfonsi (4)':
         return alfonsi_implicit_euler_4
-    elif 'Alfonsi Explicit ' in name:
-        lambda_param = name.split('Alfonsi Explicit ')[1]
+    elif 'Alfonsi E(' in name:
+        lambda_param = name.split('Alfonsi E(')[1]
+        lambda_param = lambda_param.split(')')[0]
         return partial(alfonsi_explicit_euler, lambda_param=lambda_param)
     elif name == 'Runge-Kutta':
         return runge_kutta
@@ -149,7 +150,7 @@ def alfonsi_explicit_euler(sde: SDE, W: torch.Tensor, lambda_param: float):
         lambda_value = lambda_param
     elif isinstance(lambda_param, str):
         if 'sigma^2/' in lambda_param:
-            lambda_value = sde.sigma / float(lambda_param.split('sigma^2/')[1])
+            lambda_value = sde.sigma / float(lambda_param.split('sigma^2/')[-1])
         else:
             lambda_value = float(lambda_param)
     else:
@@ -237,7 +238,7 @@ if __name__ == '__main__':
     sdes = [
         # GeometricBrownianMotion(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, mu=2, sigma=1),
         # OrnsteinUhlenbeck(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, mu=0, theta=1, sigma=1),
-        CoxIngersollRoss(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, a=3, b=0, sigma=2),
+        CoxIngersollRoss(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, a=1, b=1, sigma=2),
     ]
 
     for single_sde in sdes:

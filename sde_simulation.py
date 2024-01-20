@@ -1,13 +1,15 @@
-import sys
+import math
 import torch
 import matplotlib.pyplot as plt
 from time import time
 from typing import List, Dict, Tuple
 from sklearn.linear_model import LinearRegression
+from labellines import labelLines
 
 from sde_lib import SDE, GeometricBrownianMotion, OrnsteinUhlenbeck, CoxIngersollRoss
 from approximation_methods import get_approximation_method
 
+plt.rcParams['figure.figsize'] = (10, 6)
 DEFAULT_BATCH_SIZE = 5000  # 20000 (num_simulations) x 32768 (timesteps) still pass on my Radeon RX 6700 XT
 
 
@@ -28,8 +30,10 @@ class ConvergenceRateCalculator:
         # for plotting
         self.colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
         self.linestyles = ['-', '--', ':']
+        self.seed = 137
 
-    def test_different_sde_params(self, param_name: str, param_values: List[float], use_exact_solution: True, visualize=True):
+    def test_different_sde_params(self, param_name: str, param_values: List[float],
+                                  use_exact_solution: True, visualize=True):
         convergence_rates = {}
         for param_value in param_values:
             print(f"Testing {param_name} = {param_value}")
@@ -42,12 +46,13 @@ class ConvergenceRateCalculator:
                     plt.plot(
                         param_values,
                         [convergence_rates[param_value][(method_name, p)] for param_value in param_values],
-                        label=f"{method_name} - p = {p}", color=self.colors[i], ls=self.linestyles[j]
+                        label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j]
                     )
+            labelLines(plt.gca().get_lines())
+            # plt.legend()
             plt.title(f'{"Pseudo " if not use_exact_solution else ""}Approximation Errors for\n {self.sde}')
             plt.xlabel(param_name)
             plt.ylabel('Convergence Rate')
-            plt.legend()
             plt.show()
         return convergence_rates
 
@@ -68,64 +73,68 @@ class ConvergenceRateCalculator:
         errors = {key: sum([error[key] for error in errors]) / num_batches for key in errors[0].keys()}
         print(f"Total simulation time: {time() - ttime:.2f}s")
 
+        convergence_rates = self._calculate_convergence_rates_from_errors(errors)
+
         if visualize:
             # plot lp errors
             for i, method_name in enumerate(self.approximation_methods):
                 for j, p in enumerate(self.p_values):
                     plt.loglog(self.dt_grid, [errors[(method_name, p, N)] for N in self.num_steps_grid],
-                               label=f"{method_name} - p = {p}", color=self.colors[i], ls=self.linestyles[j])
+                               label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j])
+            labelLines(plt.gca().get_lines())
+            # plt.legend()
             plt.title(f'{"Pseudo " if not use_exact_solution else ""}Approximation Errors for\n {self.sde}')
             plt.xlabel('$\Delta t$')
             plt.ylabel('Error (e($\Delta t$))')
-            plt.legend()
             plt.show()
-
-        convergence_rates = self._calculate_convergence_rates_from_errors(errors)
-
         return convergence_rates
 
     def _calculate_errors(self, num_simulations: int, use_exact_solution: bool) -> Dict[Tuple[str, int, int], float]:
-        errors = {
-            (method_name, p, N): 0
-            for method_name in self.approximation_methods for p in self.p_values for N in self.num_steps_grid
-        }
-
         # sample brownian motion with the highest discretization
-        highest_res_N = max(self.num_steps_grid) * (2 ** 2)
+        highest_res_N = max(self.num_steps_grid) * 2
         highest_res_sde = self.sde.copy()
         highest_res_sde.update_time_discretization(num_steps=highest_res_N)
-        brownian_motion = highest_res_sde.sample_brownian_motion(num_simulations=num_simulations)
+        brownian_motion = highest_res_sde.sample_brownian_motion(num_simulations=num_simulations, seed=self.seed)
+        self.seed *= 2
 
         # calculate exact solutions as approximations with higher discretization
+        approximations = {}
         if use_exact_solution:
             print(f"Simulating exact solutions with N = {highest_res_N}", end="")
             ttime = time()
-            all_exact_solutions = highest_res_sde.exact_solutions(brownian_motion)
-            all_exact_solutions = {
-                method_name: all_exact_solutions for method_name in self.approximation_methods
-            }
+            exact_solutions = highest_res_sde.exact_solutions(brownian_motion)
             print(f" ({time() - ttime:.2f}s)")
         else:
-            print(f"Simulating pseudo exact solutions for N = {highest_res_N}", end="")
+            print(f"Running simulations for N = {highest_res_N} (for pseudo exact solutions)", end="")
             ttime = time()
-            all_exact_solutions = {}
+            exact_solutions = None
             for method_name in self.approximation_methods:
-                all_exact_solutions[method_name] = get_approximation_method(method_name)(
-                    sde=highest_res_sde, W=brownian_motion)
+                approximations[(method_name, highest_res_N)] = get_approximation_method(method_name)(
+                    highest_res_sde, brownian_motion)
             print(f" ({time() - ttime:.2f}s)")
 
+        # run simulations for different time discretizations
         print(f"Running simulations for N in {self.num_steps_grid}:")
         for N in self.num_steps_grid:
             ttime = time()
             self.sde.update_time_discretization(num_steps=N)
             for method_name in self.approximation_methods:
-                exact_solutions = all_exact_solutions[method_name][::int(highest_res_N/N)]
                 reduced_brownian_motion = brownian_motion[::int(highest_res_N/N)]
-                approximations = get_approximation_method(method_name)(self.sde, reduced_brownian_motion)
-                for p in self.p_values:
-                    errors[(method_name, p, N)] += self._calculate_lp_error(
-                        exact_solutions, approximations, p=p)
+                approximations[(method_name, N)] = get_approximation_method(method_name)(
+                    self.sde, reduced_brownian_motion)
             print(f"{time() - ttime:.2f}s + ", end="")
+
+        # calculate errors
+        errors = {}
+        for method_name in self.approximation_methods:
+            for N in self.num_steps_grid:
+                if not use_exact_solution:
+                    reduced_exact_solutions = approximations[(method_name, 2 * N)][::2]
+                else:
+                    reduced_exact_solutions = exact_solutions[::int(highest_res_N/N)]
+                for p in self.p_values:
+                    errors[(method_name, p, N)] = self._calculate_lp_error(
+                        reduced_exact_solutions, approximations[(method_name, N)], p=p)
         print("")
         return errors
 
@@ -154,6 +163,12 @@ class ConvergenceRateCalculator:
                 y = torch.log(torch.tensor([error_values[(method_name, p, N)] for N in self.num_steps_grid]))
                 reg = LinearRegression().fit(x, y)
                 convergence_rates[(method_name, p)] = reg.coef_.item()
+
+                # minN, maxN = min(self.num_steps_grid), max(self.num_steps_grid)
+                # error_minN, error_maxN = error_values[(method_name, p, minN)], error_values[(method_name, p, maxN)]
+                # convergence_rates[(method_name, p)] = ((math.log(error_minN) - math.log(error_maxN))
+                #                                        / math.log(maxN / minN))
+
                 print(f"{method_name} convergence rate for p = {p}: {convergence_rates[(method_name, p)]}")
             print("---")
         return convergence_rates
@@ -164,10 +179,11 @@ if __name__ == '__main__':
         # 'Euler-Maruyama',
         # 'Milstein',
         # 'Truncated Milstein',
-        'Alfonsi Implicit (3)',
-        'Alfonsi Implicit (4)',
-        'Alfonsi Explicit 0',  # lambda=0 correspond to (4)
-        'Alfonsi Explicit sigma^2/4',  # lambda = sigma ^ 2 / 4 correspond to (3)
+        'Alfonsi (3)',
+        'Alfonsi (4)',
+        'Alfonsi E(0)',  # lambda=0 correspond to (4)
+        'Alfonsi E(sigma^2/4)',  # lambda = sigma ^ 2 / 4 correspond to (3)
+        'Alfonsi E(sigma^2/8)',  # lambda = sigma ^ 2 / 4 correspond to (3)
         # 'Runge-Kutta',
         # 'Time Adaptive 0',
     ]
@@ -179,9 +195,10 @@ if __name__ == '__main__':
     calc = ConvergenceRateCalculator(
         sde=SDE,
         approximation_methods=APPROXIMATION_METHODS,
-        dt_grid=[2 ** i for i in range(-14, -4)],
+        dt_grid=[2 ** i for i in range(-15, -4)],
         p_values=[1],
-        num_simulations=20000,
+        num_simulations=10000,
     )
     # calc.calculate_convergence_rates(use_exact_solution=False, visualize=True)
-    calc.test_different_sde_params('sigma', [0.5, 1, 1.5, 2, 2.5, 3], use_exact_solution=False, visualize=True)
+    calc.test_different_sde_params('sigma', [0.5, 1, 1.5, 2, 2.5, 3],
+                                   use_exact_solution=False, visualize=True)
