@@ -17,7 +17,6 @@ APPROXIMATION_METHODS = [
     'Alfonsi E(0)',  # lambda=0 correspond to (4)
     'Alfonsi E(sigma^2/4)',  # lambda = sigma ^ 2 / 4 correspond to (3)
     'Runge-Kutta',
-    # 'Time Adaptive 0',
 ]
 
 

@@ -5,6 +5,7 @@ from time import time
 from typing import List, Dict, Tuple
 from sklearn.linear_model import LinearRegression
 from labellines import labelLines
+from pprint import pprint
 
 from sde_lib import SDE, GeometricBrownianMotion, OrnsteinUhlenbeck, CoxIngersollRoss
 from approximation_methods import get_approximation_method
@@ -43,11 +44,16 @@ class ConvergenceRateCalculator:
 
         if visualize:
             x_values = param_values
+            plt.xlabel(param_name)
+            # show delta values for CIR process
             if isinstance(self.sde, CoxIngersollRoss):
                 if param_name == 'a':
-                    x_values = [self.sde.sigma ** 2 / (2 * a) for a in param_values]
+                    x_values = [4 * a / (self.sde.sigma ** 2) for a in param_values]
+                    plt.xlabel("delta")
                 elif param_name == 'sigma':
-                    x_values = [sigma ** 2 / (2 * self.sde.a) for sigma in param_values]
+                    x_values = [4 * self.sde.a / (sigma ** 2) for sigma in param_values]
+                    plt.xlabel("delta")
+
             for i, method_name in enumerate(self.approximation_methods):
                 for j, p in enumerate(self.p_values):
                     plt.plot(
@@ -65,9 +71,10 @@ class ConvergenceRateCalculator:
                 ""
             )
             plt.title(f'{"Pseudo " if not use_exact_solution else ""}Approximation Errors for\n {adapted_sde_name}')
-            plt.xlabel("sigma^2 / (2 * a)")
             plt.ylabel('Convergence Rate')
             plt.show()
+        print(f"Convergence rates for {param_name} = {param_values}:")
+        pprint(convergence_rates)
         return convergence_rates
 
     def calculate_convergence_rates(self, use_exact_solution: True, visualize=True):
@@ -198,20 +205,19 @@ if __name__ == '__main__':
         'Alfonsi E(0)',  # lambda=0 correspond to (4)
         'Alfonsi E(sigma^2/4)',  # lambda = sigma ^ 2 / 4 correspond to (3)
         'Runge-Kutta',
-        # 'Time Adaptive 0',
     ]
 
     # SDE = GeometricBrownianMotion(time_horizon=1, num_steps=1, x0=1, mu=2, sigma=1)
-    SDE = CoxIngersollRoss(time_horizon=1, num_steps=1, x0=1, a=0.5, b=1, sigma=2)
+    SDE = CoxIngersollRoss(time_horizon=1, num_steps=1, x0=1, a=1, b=1, sigma=2)
     # SDE = OrnsteinUhlenbeck(time_horizon=1, num_steps=1, x0=1, mu=0, theta=1, sigma=1
 
     calc = ConvergenceRateCalculator(
         sde=SDE,
         approximation_methods=APPROXIMATION_METHODS,
         dt_grid=[2 ** i for i in range(-13, -2)],
-        p_values=[1, 2],
+        p_values=[1],
         num_simulations=10000,
     )
     # calc.calculate_convergence_rates(use_exact_solution=False, visualize=True)
-    calc.test_different_sde_params('a', [0.25, 0.5, 1, 2, 4, 8],
+    calc.test_different_sde_params('a', [0.25, 0.5, 1, 2, 3, 4],
                                    use_exact_solution=False, visualize=True)

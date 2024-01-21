@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from copy import deepcopy
 
-from utils import on_device, SEED
+from utils import on_device, SEED, neg_part
 
 
 class SDE(ABC):
@@ -191,7 +191,7 @@ class CoxIngersollRoss(SDE):
             X[0] = self.x0
             for i in range(self.N-1):
                 X[i+1] = (U[i] + torch.exp(-self.b * self.ts[i] / 2) *
-                          (-torch.minimum(torch.tensor(0), torch.min(inf_inputs[:i+1], dim=0)[0]))) ** 2
+                          (neg_part(torch.min(inf_inputs[:i+1], dim=0)[0]))) ** 2
         else:
             raise NotImplementedError("Exact solution is not implemented or not known")
         return X

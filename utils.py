@@ -36,3 +36,7 @@ def run_batched(func, arg_name, batch_size, batch_dim, *args, **kwargs):
 
 def pos_part(x: torch.Tensor):
     return torch.maximum(x, torch.tensor(0, device=x.device))
+
+
+def neg_part(x: torch.Tensor):
+    return -torch.minimum(x, torch.tensor(0, device=x.device))
