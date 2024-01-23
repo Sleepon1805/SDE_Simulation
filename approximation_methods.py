@@ -56,6 +56,8 @@ def euler_maruyama(sde: SDE, W: torch.Tensor):
     X[0] = sde.x0
     for i in range(sde.N - 1):
         X[i + 1] = X[i] + sde.drift(X[i], sde.ts[i]) * sde.dt + sde.diffusion(X[i], sde.ts[i]) * dW[i]
+        if isinstance(sde, CoxIngersollRoss):
+            X[i + 1] = pos_part(X[i + 1])
     return X
 
 
@@ -72,6 +74,7 @@ def milstein(sde: SDE, W: torch.Tensor):
         for i in range(sde.N - 1):
             X[i + 1] = (X[i] + sde.drift(X[i], sde.ts[i]) * sde.dt + sde.diffusion(X[i], sde.ts[i]) * dW[i]
                         + 0.25 * sde.sigma ** 2 * (dW[i] ** 2 - sde.dt))
+            X[i + 1] = pos_part(X[i + 1])
     else:
         x = Symbol('X')
         diffusion_derivative = lambdify(x, diff(sde.diffusion(x, t=0), x), 'numpy')
@@ -94,7 +97,7 @@ def truncated_milstein(sde: SDE, W: torch.Tensor):
 
         dt = torch.tensor(sde.dt, device=W.device)
         for i in range(sde.N - 1):
-            nonlinear_part = torch.maximum(dt ** 0.5, torch.maximum(dt, X[i]) ** 0.5 + dW[i]) ** 2
+            nonlinear_part = torch.maximum(dt, (torch.maximum(dt, X[i]) ** 0.5 + dW[i]) ** 2)
             X[i + 1] = pos_part(nonlinear_part + (sde.delta - 1 - sde.b * X[i]) * dt)
     else:
         raise NotImplementedError(f'Truncated Milstein method not implemented for {sde}')
@@ -186,6 +189,8 @@ def runge_kutta(sde: SDE, W: torch.Tensor):
         korr_X = X[i] + a * sde.dt + b * sde.dt ** 0.5
         X[i + 1] = (X[i] + a * sde.dt + b * dW[i] +
                     0.5 * (sde.diffusion(korr_X, 0) - b) * (dW[i] ** 2 - sde.dt) * (sde.dt ** -0.5))
+        if isinstance(sde, CoxIngersollRoss):
+            X[i + 1] = pos_part(X[i + 1])
     return X
 
 

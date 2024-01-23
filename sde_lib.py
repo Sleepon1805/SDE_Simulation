@@ -2,6 +2,7 @@ import torch
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from copy import deepcopy
+from typing import List
 
 from utils import on_device, SEED, neg_part
 
@@ -82,6 +83,18 @@ class SDE(ABC):
             self.dt = int(ts[1] - ts[0])
         else:
             raise ValueError("Either num_steps, dt or ts must be specified")
+
+    def to_str(self, hide: str | List[str] = None):
+        sde_name = str(self)
+        if hide is None:
+            return sde_name
+
+        if isinstance(hide, str):
+            hide = [hide]
+
+        for param_name in hide:
+            sde_name = sde_name.replace(f"{param_name}={getattr(self, param_name)}, ", "")
+        return sde_name
 
     def __repr__(self):
         """
@@ -170,10 +183,6 @@ class CoxIngersollRoss(SDE):
         return self.a - self.b * X_t
 
     def diffusion(self, X_t, t):
-        if self.delta < 2:
-            X_t = torch.maximum(X_t, torch.tensor(1e-9)) if isinstance(X_t, torch.Tensor) else max(X_t, 1e-9)
-        else:
-            X_t = torch.abs(X_t) if isinstance(X_t, torch.Tensor) else abs(X_t)
         return self.sigma * (X_t ** 0.5)
 
     @on_device

@@ -12,7 +12,7 @@ from approximation_methods import get_approximation_method
 from utils import SEED
 
 plt.rcParams['figure.figsize'] = (10, 6)
-DEFAULT_BATCH_SIZE = 10000  # 20000 (num_simulations) x 32768 (timesteps) still pass on my Radeon RX 6700 XT
+DEFAULT_BATCH_SIZE = 5000  # 20000 (num_simulations) x 32768 (timesteps) still pass on my Radeon RX 6700 XT
 
 
 class ConvergenceRateCalculator:
@@ -43,47 +43,24 @@ class ConvergenceRateCalculator:
             convergence_rates[param_value] = self.calculate_convergence_rates(use_exact_solution, visualize)
 
         if visualize:
-            x_values = param_values
-            plt.xlabel(param_name)
-            # show delta values for CIR process
-            if isinstance(self.sde, CoxIngersollRoss):
-                if param_name == 'a':
-                    x_values = [4 * a / (self.sde.sigma ** 2) for a in param_values]
-                    plt.xlabel("delta")
-                elif param_name == 'sigma':
-                    x_values = [4 * self.sde.a / (sigma ** 2) for sigma in param_values]
-                    plt.xlabel("delta")
+            self.visualize_convergence_rates(param_name, param_values, convergence_rates)
 
-            for i, method_name in enumerate(self.approximation_methods):
-                for j, p in enumerate(self.p_values):
-                    plt.plot(
-                        x_values,
-                        [convergence_rates[param_value][(method_name, p)] for param_value in param_values],
-                        label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j]
-                    )
-            labelLines(plt.gca().get_lines())
-            # plt.legend()
-            adapted_sde_name = str(self.sde).replace(
-                f"N={self.sde.N}, ",
-                ""
-            ).replace(
-                f"{param_name}={getattr(self.sde, param_name)}, ",
-                ""
-            )
-            plt.title(f'{"Pseudo " if not use_exact_solution else ""}Approximation Errors for\n {adapted_sde_name}')
-            plt.ylabel('Convergence Rate')
-            plt.show()
         print(f"Convergence rates for {param_name} = {param_values}:")
         pprint(convergence_rates)
         return convergence_rates
 
     def calculate_convergence_rates(self, use_exact_solution: True, visualize=True):
-        adapted_sde_name = str(self.sde).replace(
-            f"N={self.sde.N}",
-            f"N=[{max(self.num_steps_grid)} ... {min(self.num_steps_grid)}]"
-        )
-        print(f'SDE: {adapted_sde_name}')
+        print(f"SDE: {self.sde.to_str(hide='N')}")
 
+        errors = self.calculate_errors_batched(use_exact_solution)
+
+        convergence_rates = self._calculate_convergence_rates_from_errors(errors)
+
+        if visualize:
+            self.visualize_errors(errors)
+        return convergence_rates
+
+    def calculate_errors_batched(self, use_exact_solution: bool) -> Dict[Tuple[str, int, int], float]:
         errors = []
         assert self.num_simulations % self.batch_size == 0, "float number of batches not implemented yet"
         num_batches = self.num_simulations // self.batch_size  # TODO: automatic batch size
@@ -93,22 +70,7 @@ class ConvergenceRateCalculator:
             errors.append(self._calculate_errors(self.batch_size, use_exact_solution))
         errors = {key: sum([error[key] for error in errors]) / num_batches for key in errors[0].keys()}
         print(f"Total simulation time: {time() - ttime:.2f}s")
-
-        convergence_rates = self._calculate_convergence_rates_from_errors(errors)
-
-        if visualize:
-            # plot lp errors
-            for i, method_name in enumerate(self.approximation_methods):
-                for j, p in enumerate(self.p_values):
-                    plt.loglog(self.dt_grid, [errors[(method_name, p, N)] for N in self.num_steps_grid],
-                               label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j])
-            labelLines(plt.gca().get_lines())
-            # plt.legend()
-            plt.title(f'{"Pseudo " if not use_exact_solution else ""}Approximation Errors for\n {self.sde}')
-            plt.xlabel('$\Delta t$')
-            plt.ylabel('Error (e($\Delta t$))')
-            plt.show()
-        return convergence_rates
+        return errors
 
     def _calculate_errors(self, num_simulations: int, use_exact_solution: bool) -> Dict[Tuple[str, int, int], float]:
         # sample brownian motion with the highest discretization
@@ -161,18 +123,12 @@ class ConvergenceRateCalculator:
 
     @staticmethod
     def _calculate_lp_error(solutions, calc_approximations, p):
-        """
-        Calculate L^p error between sampled solutions and approximations
-        :param solutions: torch.Tensor: exact solutions of shape (num_timesteps[, num_simulations])
-        :param calc_approximations: torch.Tensor: approximations of shape (num_timesteps[, num_simulations])
-        :param p: float: p in L^p norm
-        :return: float: strong L^p error
-        """
         assert p >= 1, "p \in [1, \infty)"
         error = torch.max(torch.mean(torch.abs(solutions - calc_approximations) ** p, dim=1) ** (1/p))
         return error.cpu().item()
 
-    def _calculate_convergence_rates_from_errors(self, error_values):
+    def _calculate_convergence_rates_from_errors(self, error_values: Dict[Tuple[str, int, int], float]
+                                                 ) -> Dict[Tuple[str, int], float]:
         """
         Calculate convergence rate from given errors and time discretizations.
         """
@@ -193,6 +149,45 @@ class ConvergenceRateCalculator:
                 print(f"{method_name} convergence rate for p = {p}: {convergence_rates[(method_name, p)]}")
             print("---")
         return convergence_rates
+
+    def visualize_errors(self, errors: Dict[Tuple[str, int, int], float]):
+        # plot lp errors
+        for i, method_name in enumerate(self.approximation_methods):
+            for j, p in enumerate(self.p_values):
+                plt.loglog(self.dt_grid, [errors[(method_name, p, N)] for N in self.num_steps_grid],
+                           label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j])
+        labelLines(plt.gca().get_lines())
+        # plt.legend()
+        plt.title(f'Approximation Errors for\n {self.sde}')
+        plt.xlabel('$\Delta t$')
+        plt.ylabel('Error (e($\Delta t$))')
+        plt.show()
+
+    def visualize_convergence_rates(self, param_name: str, param_values: list,
+                                    convergence_rates: Dict[float, Dict[Tuple[str, int], float]]):
+        x_values = param_values
+        plt.xlabel(param_name)
+        # show delta values for CIR process
+        if isinstance(self.sde, CoxIngersollRoss):
+            if param_name == 'a':
+                x_values = [4 * a / (self.sde.sigma ** 2) for a in param_values]
+                plt.xlabel("delta")
+            elif param_name == 'sigma':
+                x_values = [4 * self.sde.a / (sigma ** 2) for sigma in param_values]
+                plt.xlabel("delta")
+
+        for i, method_name in enumerate(self.approximation_methods):
+            for j, p in enumerate(self.p_values):
+                plt.plot(
+                    x_values,
+                    [convergence_rates[param_value][(method_name, p)] for param_value in param_values],
+                    label=f"{method_name}", color=self.colors[i], ls=self.linestyles[j]
+                )
+        labelLines(plt.gca().get_lines())
+        # plt.legend()
+        plt.title(f"Approximation Errors for\n {self.sde.to_str(hide=['N', param_name])}\n N = {self.num_steps_grid}")
+        plt.ylabel('Convergence Rate')
+        plt.show()
 
 
 if __name__ == '__main__':
