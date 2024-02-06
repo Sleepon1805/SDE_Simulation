@@ -199,7 +199,7 @@ class CoxIngersollRoss(SDE):
             X = torch.zeros_like(W)
             X[0] = self.x0
             for i in range(self.N-1):
-                X[i+1] = (U[i] + torch.exp(-self.b * self.ts[i] / 2) *
+                X[i+1] = (U[i+1] + torch.exp(-self.b * self.ts[i] / 2) *
                           (neg_part(torch.min(inf_inputs[:i+1], dim=0)[0]))) ** 2
         else:
             raise NotImplementedError("Exact solution is not implemented or not known")
