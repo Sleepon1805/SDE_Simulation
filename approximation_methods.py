@@ -237,27 +237,42 @@ if __name__ == '__main__':
     plt.figure(figsize=(15, 9))
     T = 1  # time horizon
     X0 = 1  # initial value
-    num_steps_grid = [2 ** i for i in range(5, 11)]
+    num_steps = 2 ** 15
+    factor = 2
 
     sdes = [
         # GeometricBrownianMotion(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, mu=2, sigma=1),
         # OrnsteinUhlenbeck(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, mu=0, theta=1, sigma=1),
-        CoxIngersollRoss(time_horizon=T, num_steps=max(num_steps_grid), x0=X0, a=1, b=1, sigma=2),
+        CoxIngersollRoss(time_horizon=T, num_steps=factor * num_steps, x0=X0, a=0.125, b=1, sigma=2),
     ]
 
     for single_sde in sdes:
         # Brownian motion
-        brownian_motion = single_sde.sample_brownian_motion(num_simulations=1, seed=SEED)
+        brownian_motion = single_sde.sample_brownian_motion(num_simulations=1)
         # plt.plot(single_sde.ts, brownian_motion, label="BB", linewidth=0.3)
 
         # Exact solution
         try:
             exact_solution = single_sde.exact_solutions(brownian_motion)
-            plt.plot(single_sde.ts, exact_solution, label="Exact ($Y_t$)", linewidth=0.3)
+            plt.plot(single_sde.ts[::factor], exact_solution[::factor], label="Exact ($Y_t$)", linewidth=0.3)
         except AssertionError as e:
             print(e)
         except NotImplementedError as e:
             print(e)
+
+        # Approximations
+        for method_name in APPROXIMATION_METHODS:
+            try:
+                approximation = get_approximation_method(method_name)(single_sde, brownian_motion)
+                plt.plot(single_sde.ts[::factor], approximation[::factor],
+                         label=f"{method_name} approximation ($Y_t$) 2x res", ls='--', linewidth=0.3)
+            except AssertionError as e:
+                print(e)
+            except NotImplementedError as e:
+                print(e)
+
+        single_sde.update_time_discretization(num_steps=num_steps)
+        brownian_motion = brownian_motion[::factor]
 
         # Approximations
         for method_name in APPROXIMATION_METHODS:
