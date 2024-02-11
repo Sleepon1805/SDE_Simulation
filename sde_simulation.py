@@ -17,7 +17,7 @@ DEFAULT_BATCH_SIZE = 5000  # 20000 (num_simulations) x 32768 (timesteps) still p
 
 class ConvergenceRateCalculator:
     def __init__(self, sde: SDE, approximation_methods: List[str], dt_grid: List[float], p_values: List[int],
-                 num_simulations: int):
+                 num_simulations: int, batch_size: int = DEFAULT_BATCH_SIZE):
         self.sde = sde
         self.approximation_methods = approximation_methods
         self.dt_grid = dt_grid
@@ -27,7 +27,7 @@ class ConvergenceRateCalculator:
         self.num_steps_grid = [int(sde.T / dt) for dt in dt_grid]
 
         # for gpu calculations
-        self.batch_size = min(DEFAULT_BATCH_SIZE, num_simulations)
+        self.batch_size = min(batch_size, num_simulations)
 
         # for plotting
         self.colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
