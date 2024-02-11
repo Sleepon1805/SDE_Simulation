@@ -5,6 +5,8 @@ SEED = 137
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Using device: {DEVICE}')
 
+torch.set_default_dtype(torch.float64)
+
 
 def on_device(func):
     def wrapper(*args, **kwargs):
